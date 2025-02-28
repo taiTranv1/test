@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>YOLOv10 Webcam</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.1/socket.io.js"></script>
+</head>
+<body>
+    <h1>Phát hiện đối tượng bằng Webcam</h1>
+    <video id="video" width="640" height="480" autoplay></video>
+    <br>
+    <button id="captureButton">Yes</button>
+    <br>
+    <img id="result" width="640" height="480">
+    <script>
+        const socket = io();
+        const video = document.getElementById("video");
+        const result = document.getElementById("result");
+        const captureButton = document.getElementById("captureButton");
+
+        // Khởi động webcam
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                video.srcObject = stream;
+            })
+            .catch(err => {
+                console.error("Lỗi webcam: ", err);
+            });
+
+        // Hàm chụp và gửi frame khi nhấn nút
+        function captureFrame() {
+            const canvas = document.createElement("canvas");
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext("2d").drawImage(video, 0, 0);
+            const frame = canvas.toDataURL("image/jpeg");
+            console.log("Frame captured:", frame)
+            socket.emit("frame", frame); // Gửi frame lên server
+            
+        }
+
+        // Gắn sự kiện nhấn nút Yes
+        captureButton.addEventListener("click", captureFrame);
+
+        // Nhận kết quả từ server và hiển thị
+        socket.on("result", data => {
+            result.src = data;
+        });
+    </script>
+</body>
+</html>
