@@ -1,16 +1,21 @@
 from flask import Flask, render_template
 from flask_socketio import SocketIO, emit
-#form werkzeug.utils import secure_filename
 from ultralytics import YOLO
 import cv2
 import numpy as np
 import base64
 import os
 
-#khai bao' flask
+# Khởi tạo Flask và SocketIO
 app = Flask(__name__)
 socketio = SocketIO(app, async_mode="eventlet")
-model = YOLO("best.pt")
+
+# Load YOLO model
+try:
+    model = YOLO("best.pt")
+except Exception as e:
+    print(f"Lỗi khi tải mô hình YOLO: {e}")
+    model = None
 
 @app.route("/")
 def index():
@@ -18,18 +23,40 @@ def index():
 
 @socketio.on("frame")
 def handle_frame(data):
-    img_data = base64.b64decode(data.split(",")[1])
-    nparr = np.frombuffer(img_data, np.uint8)
-    frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    try:
+        # Kiểm tra dữ liệu đầu vào
+        if not data or "," not in data:
+            emit("error", "Dữ liệu hình ảnh không hợp lệ")
+            return
 
-    results = model(frame) #chay yolo
-    results_frame = results[0].plot()
+        # Giải mã hình ảnh từ base64
+        img_data = base64.b64decode(data.split(",")[1])
+        nparr = np.frombuffer(img_data, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-    #ma hoa' kq gui ve client
-    _, buffer = cv2.imencode(".jpg", results_frame)
-    results_data = base64.b64encode(buffer).decode("utf-8")
-    emit("result","data:image/jpeg;base64," + results_data)
+        # Kiểm tra xem frame có hợp lệ không
+        if frame is None:
+            emit("error", "Không thể giải mã hình ảnh")
+            return
 
-if __name__ == "__main__" :
+        # Xử lý hình ảnh bằng YOLO
+        if model is not None:
+            results = model(frame)  # Chạy YOLO
+            results_frame = results[0].plot()
+
+            # Mã hóa kết quả và gửi về client
+            _, buffer = cv2.imencode(".jpg", results_frame)
+            results_data = base64.b64encode(buffer).decode("utf-8")
+            emit("result", "data:image/jpeg;base64," + results_data)
+        else:
+            emit("error", "Mô hình YOLO chưa được tải")
+    except Exception as e:
+        print(f"Lỗi khi xử lý frame: {e}")
+        emit("error", "Đã xảy ra lỗi khi xử lý hình ảnh")
+
+if __name__ == "__main__":
+    # Lấy cổng từ biến môi trường hoặc mặc định là 5000
     port = int(os.environ.get("PORT", 5000))
-    socketio.run(app, host="0.0.0.0", port=5000, debug=True) 
+    
+    # Chạy ứng dụng
+    socketio.run(app, host="0.0.0.0", port=port, debug=os.environ.get("DEBUG", "False").lower() == "true")
